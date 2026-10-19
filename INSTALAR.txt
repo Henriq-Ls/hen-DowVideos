@@ -1,0 +1,12 @@
+hein-
+
+# ------------------------- OBRIGATÓRIO --------------------------------
+py -3.13.1 -m venv .venv
+python -m venv .venv
+
+Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
+.\.venv\Scripts\Activate.ps1
+
+python.exe -m pip install --upgrade pip    
+python -m pip install --upgrade setuptools wheel    
+pip install -r requirements.txt
