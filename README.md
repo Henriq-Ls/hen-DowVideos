@@ -11,6 +11,8 @@ ou áudio, criar transcrições e gerar conteúdo estruturado localmente.
   [yt-dlp](https://github.com/yt-dlp/yt-dlp), inclusive Shorts quando acessíveis.
 - Permite combinar tarefas: baixar vídeo, baixar áudio, criar transcrição e gerar
   conteúdo estruturado.
+- Por padrão, organiza os resultados em uma subpasta por vídeo; essa opção pode ser
+  desmarcada para salvar tudo diretamente na pasta escolhida.
 - Pesquisa vídeos do YouTube por tema ou palavra-chave, com filtros de duração,
   visualizações e data de publicação.
 - Tenta usar legendas existentes antes de recorrer à transcrição local com Whisper.
@@ -101,9 +103,12 @@ python main.py
    **Analisar link**.
 3. Marque uma ou mais tarefas. As opções de formato e qualidade aparecem conforme
    as tarefas escolhidas.
-4. Escolha a pasta de saída e clique em **Iniciar processamento**.
-5. Acompanhe o progresso e consulte as abas de transcrição, conteúdo estruturado e
-   histórico.
+4. Escolha a pasta de saída e mantenha marcada **Organizar os arquivos de cada vídeo
+   em uma subpasta** para separar os resultados por vídeo. Desmarque para usar uma
+   única pasta.
+5. Clique em **Iniciar processamento**. O resumo final informa o que concluiu, o que
+   ficou parcial e onde os arquivos foram salvos.
+6. Consulte as abas de transcrição, conteúdo estruturado e histórico.
 
 A pesquisa do YouTube pode ser aberta pela própria tela. Os resultados escolhidos
 na busca são adicionados à lista de links.

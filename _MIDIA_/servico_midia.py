@@ -269,7 +269,8 @@ class ServicoMidia:
             "quiet": True,
             "no_warnings": True,
             "noplaylist": True,
-            "outtmpl": str(pasta_saida / "%(title).180B [%(id)s].%(ext)s"),
+            # Deixa espaço para a subpasta por vídeo no limite de caminho do Windows.
+            "outtmpl": str(pasta_saida / "%(title).120B [%(id)s].%(ext)s"),
             "progress_hooks": [self._hook_progresso(progresso)],
             "ffmpeg_location": str(ffmpeg),
         }
@@ -317,11 +318,70 @@ class ServicoMidia:
         }
 
     @staticmethod
-    def _ler_legenda_vtt(caminho: Path) -> str:
+    def _tempo_legenda_segundos(valor: str) -> float | None:
+        valor = (valor or "").strip().replace(",", ".")
+        partes = valor.split(".")
+        if len(partes) != 2:
+            return None
+        relogio, fracao = partes
+        campos = relogio.split(":")
+        try:
+            if len(campos) == 3:
+                horas, minutos, segundos = map(int, campos)
+            elif len(campos) == 2:
+                horas = 0
+                minutos, segundos = map(int, campos)
+            else:
+                return None
+            milissegundos = int((fracao + "000")[:3])
+        except ValueError:
+            return None
+        return horas * 3600 + minutos * 60 + segundos + milissegundos / 1000
+
+    @classmethod
+    def _ler_segmentos_legenda(cls, caminho: Path) -> list[dict]:
+        conteudo = caminho.read_text(encoding="utf-8-sig", errors="replace")
+        segmentos = []
+        anterior = None
+        padrao_tempo = re.compile(
+            r"((?:\d{1,2}:)?\d{2}:\d{2}[.,]\d{1,3})\s*-->\s*"
+            r"((?:\d{1,2}:)?\d{2}:\d{2}[.,]\d{1,3})"
+        )
+
+        for bloco in re.split(r"\r?\n\s*\r?\n", conteudo):
+            linhas = [linha.strip() for linha in bloco.splitlines()]
+            indice_tempo = next(
+                (i for i, linha in enumerate(linhas) if "-->" in linha),
+                None,
+            )
+            if indice_tempo is None:
+                continue
+            correspondencia = padrao_tempo.search(linhas[indice_tempo])
+            if not correspondencia:
+                continue
+            inicio = cls._tempo_legenda_segundos(correspondencia.group(1))
+            fim = cls._tempo_legenda_segundos(correspondencia.group(2))
+            texto = " ".join(linhas[indice_tempo + 1 :])
+            texto = re.sub(r"<[^>]*>", " ", texto)
+            texto = html.unescape(texto)
+            texto = re.sub(r"\s+", " ", texto).strip()
+            if inicio is None or fim is None or fim <= inicio or not texto:
+                continue
+            if texto == anterior:
+                continue
+            segmentos.append({"start": inicio, "end": fim, "text": texto})
+            anterior = texto
+        return segmentos
+
+    @classmethod
+    def _ler_legenda_vtt(cls, caminho: Path) -> str:
+        segmentos = cls._ler_segmentos_legenda(caminho)
+        if segmentos:
+            return " ".join(item["text"] for item in segmentos).strip()
+
         conteudo = caminho.read_text(encoding="utf-8-sig", errors="replace")
         linhas = []
         anterior = None
-
         for linha in conteudo.splitlines():
             texto = linha.strip()
             if (
@@ -331,14 +391,12 @@ class ServicoMidia:
                 or re.fullmatch(r"\d+", texto)
             ):
                 continue
-
             texto = re.sub(r"<[^>]*>", "", texto)
             texto = html.unescape(texto)
             texto = re.sub(r"\s+", " ", texto).strip()
             if texto and texto != anterior:
                 linhas.append(texto)
                 anterior = texto
-
         return " ".join(linhas).strip()
 
     @staticmethod
@@ -347,7 +405,25 @@ class ServicoMidia:
         nome = nome[:limite].rstrip("._")
         return nome or "video"
 
-    def _obter_legenda(self, url: str, pasta_temporaria: Path) -> str:
+    def preparar_pasta_video(self, url: str, destino: str | Path) -> str:
+        """Cria e devolve uma subpasta identificável para os arquivos de um vídeo."""
+        metadados = self.obter_informacoes(url)
+        raiz = Path(destino).expanduser()
+        raiz.mkdir(parents=True, exist_ok=True)
+
+        titulo = self._nome_seguro(metadados.get("title") or "video", limite=48)
+        id_bruto = str(metadados.get("id") or "").strip()
+        identificador = (
+            self._nome_seguro(id_bruto, limite=18)
+            if id_bruto
+            else ""
+        )
+        nome_pasta = f"{titulo} [{identificador}]" if identificador else titulo
+        pasta_video = raiz / nome_pasta
+        pasta_video.mkdir(parents=True, exist_ok=True)
+        return str(pasta_video)
+
+    def _obter_legenda(self, url: str, pasta_temporaria: Path) -> dict:
         yt_dlp = self._importar_yt_dlp()
         opcoes = {
             "quiet": True,
@@ -366,12 +442,12 @@ class ServicoMidia:
                 ydl.download([url])
         except Exception as exc:
             log.aviso("ServicoMidia", "_obter_legenda", f"legenda indisponível: {exc}")
-            return ""
+            return {"text": "", "segments": []}
 
         arquivos = list(pasta_temporaria.rglob("*.vtt"))
         arquivos.extend(pasta_temporaria.rglob("*.srt"))
         if not arquivos:
-            return ""
+            return {"text": "", "segments": []}
 
         def prioridade(caminho: Path) -> int:
             nome = caminho.name.lower()
@@ -383,15 +459,28 @@ class ServicoMidia:
         for arquivo in sorted(arquivos, key=prioridade):
             texto = self._ler_legenda_vtt(arquivo)
             if texto:
-                return texto
-        return ""
+                return {
+                    "text": texto,
+                    "segments": self._ler_segmentos_legenda(arquivo),
+                }
+        return {"text": "", "segments": []}
 
     def _transcrever_audio(
         self,
         url: str,
         pasta_temporaria: Path,
         progresso: AtualizacaoProgresso | None,
-    ) -> str:
+    ) -> dict:
+        try:
+            import whisper
+        except ImportError as exc:
+            raise RuntimeError(
+                "A transcrição automática precisa de openai-whisper, mas o pacote "
+                "não está instalado no ambiente Python usado pelo aplicativo. "
+                "Feche o app e execute, nesse mesmo ambiente: "
+                "python -m pip install -r requirements.txt"
+            ) from exc
+
         yt_dlp = self._importar_yt_dlp()
         ffmpeg = self._localizar_ffmpeg()
         pasta_ffmpeg = str(ffmpeg.parent)
@@ -423,14 +512,6 @@ class ServicoMidia:
         if not candidatos:
             raise RuntimeError("O áudio foi baixado, mas o arquivo não foi localizado.")
 
-        try:
-            import whisper
-        except ImportError as exc:
-            raise RuntimeError(
-                "A transcrição automática precisa de openai-whisper. "
-                "Instale as dependências listadas em requirements.txt."
-            ) from exc
-
         appdata.inicializar()
         self._notificar(progresso, -1, "Carregando o modelo de transcrição…")
         modelo = whisper.load_model(MODELO_WHISPER, download_root=appdata.pasta_cache)
@@ -440,13 +521,75 @@ class ServicoMidia:
             language=IDIOMA_TRANSCRICAO,
             fp16=False,
         )
-        return str(resultado_transcricao.get("text") or "").strip()
+        segmentos = []
+        for segmento in resultado_transcricao.get("segments") or []:
+            try:
+                inicio = float(segmento.get("start"))
+                fim = float(segmento.get("end"))
+            except (AttributeError, TypeError, ValueError):
+                continue
+            texto_segmento = str(segmento.get("text") or "").strip()
+            if texto_segmento and fim > inicio:
+                segmentos.append({
+                    "start": inicio,
+                    "end": fim,
+                    "text": texto_segmento,
+                })
+        return {
+            "text": str(resultado_transcricao.get("text") or "").strip(),
+            "segments": segmentos,
+        }
+
+    @staticmethod
+    def _formatar_timestamp_srt(segundos: float) -> str:
+        total_ms = max(0, round(float(segundos) * 1000))
+        horas, restante = divmod(total_ms, 3_600_000)
+        minutos, restante = divmod(restante, 60_000)
+        segundos_inteiros, milissegundos = divmod(restante, 1000)
+        return (
+            f"{horas:02}:{minutos:02}:{segundos_inteiros:02},"
+            f"{milissegundos:03}"
+        )
+
+    @classmethod
+    def _formatar_legenda_srt(cls, segmentos: list[dict]) -> str:
+        entradas = []
+        for segmento in segmentos:
+            texto = re.sub(r"\s+", " ", str(segmento.get("text") or "")).strip()
+            try:
+                inicio = float(segmento.get("start"))
+                fim = float(segmento.get("end"))
+            except (TypeError, ValueError):
+                continue
+            if not texto or fim <= inicio:
+                continue
+            entradas.append(
+                f"{len(entradas) + 1}\n"
+                f"{cls._formatar_timestamp_srt(inicio)} --> "
+                f"{cls._formatar_timestamp_srt(fim)}\n"
+                f"{texto}"
+            )
+        return "\n\n".join(entradas) + ("\n" if entradas else "")
+
+    @staticmethod
+    def _configuracoes_ollama() -> tuple[str, str]:
+        appdata.inicializar()
+        configuracoes = appdata.ler_config()
+        modelo = str(
+            configuracoes.get("modelo_ollama") or MODELO_OLLAMA_CONTEUDO
+        ).strip()
+        endereco = str(
+            configuracoes.get("ollama_api_url") or OLLAMA_API_URL
+        ).strip()
+        return modelo, endereco
 
     def criar_transcricao(
         self,
         url: str,
         destino: str | Path,
         progresso: AtualizacaoProgresso | None = None,
+        criar_srt: bool = False,
+        salvar_txt: bool = True,
     ) -> dict:
         endereco = self._validar_url(url)
         metadados = self.obter_informacoes(endereco)
@@ -456,28 +599,64 @@ class ServicoMidia:
 
         with tempfile.TemporaryDirectory(prefix="hen_dowvideos_") as temporario:
             pasta_temporaria = Path(temporario)
-            transcricao = self._obter_legenda(endereco, pasta_temporaria)
+            resultado_legenda = self._obter_legenda(endereco, pasta_temporaria)
+            transcricao = str(resultado_legenda.get("text") or "").strip()
+            segmentos = resultado_legenda.get("segments") or []
             origem = "legenda"
-            if not transcricao:
-                transcricao = self._transcrever_audio(
+            if not transcricao or (criar_srt and not segmentos):
+                resultado_whisper = self._transcrever_audio(
                     endereco,
                     pasta_temporaria,
                     progresso,
                 )
+                transcricao = str(resultado_whisper.get("text") or "").strip()
+                segmentos = resultado_whisper.get("segments") or []
                 origem = "Whisper"
 
+        if not transcricao and segmentos:
+            transcricao = " ".join(
+                str(segmento.get("text") or "").strip()
+                for segmento in segmentos
+                if str(segmento.get("text") or "").strip()
+            )
         if not transcricao:
             raise RuntimeError("Não foi encontrada legenda nem fala reconhecível para transcrever.")
 
         nome = self._nome_seguro(metadados["title"])
         identificador = self._nome_seguro(metadados["id"], limite=40)
-        arquivo = pasta_saida / f"{nome}-{identificador}-transcricao.txt"
-        arquivo.write_text(transcricao + "\n", encoding="utf-8")
-        self._notificar(progresso, 100, "Transcrição pronta.")
-        log.ok("ServicoMidia", "criar_transcricao", f"transcrição salva em {arquivo}")
+        caminho_txt = ""
+        caminho_srt = ""
+        if criar_srt:
+            conteudo_srt = self._formatar_legenda_srt(segmentos)
+            if not conteudo_srt:
+                raise RuntimeError(
+                    "Não foi possível gerar a legenda SRT: a transcrição não "
+                    "retornou trechos com horários."
+                )
+            arquivo_srt = pasta_saida / f"{nome}-{identificador}-legenda.srt"
+            arquivo_srt.write_text(conteudo_srt, encoding="utf-8")
+            caminho_srt = str(arquivo_srt)
+        if salvar_txt:
+            arquivo_txt = pasta_saida / f"{nome}-{identificador}-transcricao.txt"
+            arquivo_txt.write_text(transcricao + "\n", encoding="utf-8")
+            caminho_txt = str(arquivo_txt)
+        saidas = [caminho for caminho in (caminho_txt, caminho_srt) if caminho]
+        self._notificar(
+            progresso,
+            100,
+            "Legenda SRT pronta." if criar_srt and not salvar_txt
+            else "Transcrição e legenda SRT prontas." if criar_srt
+            else "Transcrição pronta.",
+        )
+        log.ok(
+            "ServicoMidia",
+            "criar_transcricao",
+            f"saídas geradas: {', '.join(saidas) or 'nenhuma'}",
+        )
         return {
             "text": transcricao,
-            "path": str(arquivo),
+            "path": caminho_txt,
+            "srt_path": caminho_srt,
             "source": origem,
             "title": metadados["title"],
         }
@@ -497,6 +676,7 @@ class ServicoMidia:
                 "A transcrição é longa demais para uma única geração local. "
                 "Use uma transcrição menor ou divida o conteúdo."
             )
+        modelo_ollama, endereco_ollama = ServicoMidia._configuracoes_ollama()
 
         campos = {
             "seo_title": "string",
@@ -578,7 +758,7 @@ class ServicoMidia:
         )
         payload = json.dumps(
             {
-                "model": MODELO_OLLAMA_CONTEUDO,
+                "model": modelo_ollama,
                 "prompt": prompt,
                 "stream": False,
                 "format": esquema,
@@ -590,7 +770,7 @@ class ServicoMidia:
             ensure_ascii=False,
         ).encode("utf-8")
         requisicao = Request(
-            OLLAMA_API_URL,
+            endereco_ollama,
             data=payload,
             headers={"Content-Type": "application/json"},
             method="POST",
@@ -606,12 +786,13 @@ class ServicoMidia:
             detalhe = exc.read().decode("utf-8", errors="replace").strip()
             raise RuntimeError(
                 "O Ollama recusou a geração. Confirme se o modelo "
-                f"'{MODELO_OLLAMA_CONTEUDO}' está instalado. {detalhe}"
+                f"'{modelo_ollama}' está instalado. {detalhe}"
             ) from exc
         except URLError as exc:
             raise RuntimeError(
-                "Não foi possível conectar ao Ollama local. Abra o Ollama e "
-                f"confirme se o modelo '{MODELO_OLLAMA_CONTEUDO}' está instalado."
+                "Não foi possível conectar ao serviço Ollama configurado. Abra "
+                "o Ollama e "
+                f"confirme se o modelo '{modelo_ollama}' está instalado."
             ) from exc
         except (TimeoutError, OSError) as exc:
             raise RuntimeError(

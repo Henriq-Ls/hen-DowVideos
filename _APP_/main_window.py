@@ -12,9 +12,9 @@ Expanda este arquivo conforme o projeto crescer.
 Painéis grandes devem ir para subpastas dentro de _APP_/.
 """
 
-from PySide6.QtWidgets import QMainWindow
+from PySide6.QtWidgets import QDialog, QMainWindow, QToolButton
 from PySide6.QtGui import QAction
-from PySide6.QtCore import QByteArray
+from PySide6.QtCore import QByteArray, Qt
 
 from _CONFIGURA_ import (
     TITULO_APP, VERSAO_APP,
@@ -27,6 +27,7 @@ from _CONFIGURA_ import (
 from _LOGS_ import log
 from _APPDATA_ import appdata
 from _THREADS_ import thread_manager
+from _ULTILIDADES_.icones import ico_config
 
 
 class MainWindow(QMainWindow):
@@ -79,6 +80,40 @@ class MainWindow(QMainWindow):
         acao_sair.setShortcut(ATALHO_SAIR)
         acao_sair.triggered.connect(self.close)
         menu_arquivo.addAction(acao_sair)
+
+        acao_configuracoes = QAction(
+            ico_config(),
+            "Configurações do Ollama",
+            self,
+        )
+        acao_configuracoes.triggered.connect(self._abrir_configuracoes)
+        menu_arquivo.addSeparator()
+        menu_arquivo.addAction(acao_configuracoes)
+
+        self.botao_configuracoes = QToolButton(self.menuBar())
+        self.botao_configuracoes.setIcon(ico_config())
+        self.botao_configuracoes.setText("Configurações")
+        self.botao_configuracoes.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+        )
+        self.botao_configuracoes.setAutoRaise(True)
+        self.botao_configuracoes.setToolTip(
+            "Escolher o modelo e o endereço do serviço Ollama."
+        )
+        self.botao_configuracoes.clicked.connect(self._abrir_configuracoes)
+        self.menuBar().setCornerWidget(
+            self.botao_configuracoes,
+            Qt.Corner.TopRightCorner,
+        )
+
+    def _abrir_configuracoes(self):
+        from _APP_.dialog_configuracoes import DialogConfiguracoes
+
+        if DialogConfiguracoes(self).exec() == QDialog.DialogCode.Accepted:
+            self.statusBar().showMessage(
+                "Configurações do Ollama salvas.",
+                5000,
+            )
 
     # ── Sessão ───────────────────────────────────────────────────────────────
 

@@ -57,13 +57,14 @@ import math
 
 from PySide6.QtCore import Qt, QTimer, QRectF
 from PySide6.QtGui import QColor, QPainter, QPen
-from PySide6.QtWidgets import QDialog, QLabel, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QDialog, QLabel, QProgressBar, QVBoxLayout, QWidget
 
 from _CONFIGURA_ import (
     COR_ACENTO,
     COR_BG_CAMPO,
     COR_BORDA,
     COR_TEXTO_SECUNDARIO,
+    ESTILO_PROGRESSBAR,
     FONTE_TAMANHO_LABEL,
 )
 
@@ -99,6 +100,11 @@ class _Spinner(QWidget):
     def parar(self) -> None:
         """Para a animação — chame antes de destruir o widget."""
         self._timer.stop()
+
+    def ativar(self) -> None:
+        """Reativa a animação quando a tarefa não fornece percentual."""
+        if not self._timer.isActive():
+            self._timer.start()
 
     def _tick(self) -> None:
         self._passo = (self._passo + 1) % self._N_TRACOS
@@ -193,6 +199,14 @@ class LoadingOverlay(QDialog):
         self._spinner = _Spinner(cor_spinner, self)
         layout.addWidget(self._spinner, alignment=Qt.AlignmentFlag.AlignCenter)
 
+        self._barra_progresso = QProgressBar(self)
+        self._barra_progresso.setRange(0, 100)
+        self._barra_progresso.setValue(0)
+        self._barra_progresso.setMinimumHeight(16)
+        self._barra_progresso.setStyleSheet(ESTILO_PROGRESSBAR)
+        self._barra_progresso.hide()
+        layout.addWidget(self._barra_progresso)
+
         self._label = QLabel(mensagem, self)
         self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._label.setWordWrap(True)
@@ -203,13 +217,26 @@ class LoadingOverlay(QDialog):
         )
         layout.addWidget(self._label)
 
-        self.setFixedSize(230, 148)
+        self.setFixedSize(260, 160)
 
     # ── API pública ───────────────────────────────────────────────────────
 
     def set_mensagem(self, texto: str) -> None:
         """Atualiza o texto em tempo de execução. Thread-safe via sinal Qt."""
         self._label.setText(texto)
+
+    def set_progresso(self, percentual: int) -> None:
+        """Mostra barra quando há percentual; spinner quando a etapa é indeterminada."""
+        if percentual < 0:
+            self._barra_progresso.hide()
+            self._spinner.show()
+            self._spinner.ativar()
+            return
+
+        self._spinner.parar()
+        self._spinner.hide()
+        self._barra_progresso.setValue(max(0, min(100, percentual)))
+        self._barra_progresso.show()
 
     def fechar(self) -> None:
         """

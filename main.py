@@ -43,30 +43,6 @@ from _CONFIGURA_ import (
     TITULO_APP, IMAGEM_ICO, ARQUIVO_LOCK_APP
 )
 
-# ── Filtro VEH: silencia 0x8001010d (RPC_E_WRONG_THREAD) no Windows ──────────
-# QMediaPlayer / WMF levanta essa exceção SEH internamente — é esperado pela MS.
-# Sem este filtro o faulthandler imprime "Windows fatal exception" falso.
-if sys.platform == "win32":
-    try:
-        import ctypes as _ctypes
-        _PVECTORED_HANDLER = _ctypes.WINFUNCTYPE(_ctypes.c_long, _ctypes.c_void_p)
-
-        @_PVECTORED_HANDLER
-        def _veh_com_filter(exc_info):
-            try:
-                exc_rec = _ctypes.c_size_t.from_address(exc_info).value
-                code    = _ctypes.c_uint.from_address(exc_rec    ).value
-                flags   = _ctypes.c_uint.from_address(exc_rec + 4).value
-                if code == 0x8001010D and not (flags & 0x1):
-                    return -1  # EXCEPTION_CONTINUE_EXECUTION
-            except Exception:
-                pass
-            return 1  # EXCEPTION_CONTINUE_SEARCH
-
-        _ctypes.windll.kernel32.AddVectoredExceptionHandler(1, _veh_com_filter)
-    except Exception:
-        pass
-
 # ── Single instance — impede abrir o app duas vezes ──────────────────────────
 from PySide6.QtCore import QLockFile
 import tempfile

@@ -25,6 +25,7 @@ class TarefaMidia(ThreadSegura):
         transcrever_apos_download: bool = False,
         baixar_video: bool = False,
         baixar_audio: bool = False,
+        criar_srt: bool = False,
         urls: list[str] | None = None,
         resolucao_max: int | None = None,
         formato_video: str = FORMATO_VIDEO_PADRAO,
@@ -39,6 +40,7 @@ class TarefaMidia(ThreadSegura):
         duracao_maxima_segundos: int = 0,
         dias_atras: int = 0,
         parent=None,
+        organizar_por_video: bool = True,
     ):
         super().__init__(nome=f"midia_{uuid.uuid4().hex}", parent=parent)
         self.operacao = operacao
@@ -49,6 +51,7 @@ class TarefaMidia(ThreadSegura):
         self.transcrever_apos_download = transcrever_apos_download
         self.baixar_video = baixar_video
         self.baixar_audio = baixar_audio
+        self.criar_srt = criar_srt
         self.resolucao_max = resolucao_max
         self.formato_video = formato_video
         self.formato_audio = formato_audio
@@ -61,6 +64,7 @@ class TarefaMidia(ThreadSegura):
         self.duracao_minima_segundos = duracao_minima_segundos
         self.duracao_maxima_segundos = duracao_maxima_segundos
         self.dias_atras = dias_atras
+        self.organizar_por_video = organizar_por_video
 
     def _progresso_lote(self, indice: int, total: int):
         def atualizar(percentual: int, mensagem: str):
@@ -126,6 +130,7 @@ class TarefaMidia(ThreadSegura):
                 caminho=str(
                     pacote_download.get("folder")
                     or transcricao.get("path")
+                    or transcricao.get("srt_path")
                     or ""
                 ),
                 caminho_transcricao=str(transcricao.get("path") or ""),
@@ -137,6 +142,16 @@ class TarefaMidia(ThreadSegura):
             log.erro("TarefaMidia", "_salvar_historico", str(exc))
             return str(exc)
 
+    def _destino_para_url(
+        self,
+        servico: ServicoMidia,
+        url: str,
+        precisa_arquivo: bool = True,
+    ) -> str:
+        if self.organizar_por_video and precisa_arquivo:
+            return servico.preparar_pasta_video(url, self.destino)
+        return self.destino
+
     def _executar_lote(self, servico: ServicoMidia) -> dict:
         resultados = []
         total = len(self.urls)
@@ -145,10 +160,33 @@ class TarefaMidia(ThreadSegura):
             progresso = self._progresso_lote(indice, total)
             item = {"url": url, "ok": False}
             try:
+                precisa_arquivo = (
+                    self.operacao in ("download", "transcricao")
+                    or self.criar_srt
+                    or (
+                        self.operacao == "processamento"
+                        and (
+                            self.baixar_video
+                            or self.baixar_audio
+                            or self.transcrever_apos_download
+                            or self.gerar_conteudo_apos_transcricao
+                            or self.criar_srt
+                        )
+                    )
+                    or (
+                        self.operacao == "conteudo"
+                        and not self.texto_transcricao.strip()
+                    )
+                )
+                destino_item = self._destino_para_url(
+                    servico,
+                    url,
+                    precisa_arquivo,
+                )
                 if self.operacao == "download":
                     item["dados"] = servico.baixar_midia(
                         url,
-                        self.destino,
+                        destino_item,
                         self.tipo,
                         progresso,
                         self.resolucao_max,
@@ -159,10 +197,18 @@ class TarefaMidia(ThreadSegura):
                     if (
                         self.transcrever_apos_download
                         or self.gerar_conteudo_apos_transcricao
+                        or self.criar_srt
                     ):
                         try:
                             item["transcricao"] = servico.criar_transcricao(
-                                url, self.destino, progresso
+                                url,
+                                destino_item,
+                                progresso,
+                                criar_srt=self.criar_srt,
+                                salvar_txt=(
+                                    self.transcrever_apos_download
+                                    or self.gerar_conteudo_apos_transcricao
+                                ),
                             )
                         except Exception as exc:
                             item["transcricao_erro"] = str(exc)
@@ -187,7 +233,7 @@ class TarefaMidia(ThreadSegura):
                             item["downloads"].append(
                                 servico.baixar_midia(
                                     url,
-                                    self.destino,
+                                    destino_item,
                                     "video",
                                     progresso,
                                     self.resolucao_max,
@@ -205,7 +251,7 @@ class TarefaMidia(ThreadSegura):
                             item["downloads"].append(
                                 servico.baixar_midia(
                                     url,
-                                    self.destino,
+                                    destino_item,
                                     "audio",
                                     progresso,
                                     None,
@@ -221,10 +267,18 @@ class TarefaMidia(ThreadSegura):
                     if (
                         self.transcrever_apos_download
                         or self.gerar_conteudo_apos_transcricao
+                        or self.criar_srt
                     ):
                         try:
                             item["transcricao"] = servico.criar_transcricao(
-                                url, self.destino, progresso
+                                url,
+                                destino_item,
+                                progresso,
+                                criar_srt=self.criar_srt,
+                                salvar_txt=(
+                                    self.transcrever_apos_download
+                                    or self.gerar_conteudo_apos_transcricao
+                                ),
                             )
                         except Exception as exc:
                             item["transcricao_erro"] = str(exc)
@@ -255,7 +309,10 @@ class TarefaMidia(ThreadSegura):
                     )
                 elif self.operacao in ("transcricao", "conteudo"):
                     item["transcricao"] = servico.criar_transcricao(
-                        url, self.destino, progresso
+                        url,
+                        destino_item,
+                        progresso,
+                        criar_srt=self.criar_srt,
                     )
                     item["dados"] = item["transcricao"]
                     item["ok"] = True
@@ -282,6 +339,23 @@ class TarefaMidia(ThreadSegura):
                     item["ok"] = False
                 else:
                     item["erro"] = str(exc)
+            tem_erro = any(
+                item.get(chave)
+                for chave in (
+                    "erro",
+                    "erros",
+                    "transcricao_erro",
+                    "conteudo_erro",
+                )
+            )
+            if tem_erro:
+                item["ok"] = False
+            tem_saida = bool(
+                item.get("downloads")
+                or item.get("transcricao")
+                or item.get("conteudo")
+            )
+            item["parcial"] = bool(not item["ok"] and tem_saida)
             if (
                 item.get("ok")
                 or item.get("transcricao")
@@ -296,7 +370,14 @@ class TarefaMidia(ThreadSegura):
         return {
             "items": resultados,
             "success_count": sum(1 for item in resultados if item["ok"]),
-            "failure_count": sum(1 for item in resultados if not item["ok"]),
+            "partial_count": sum(
+                1 for item in resultados if item.get("parcial")
+            ),
+            "failure_count": sum(
+                1
+                for item in resultados
+                if not item["ok"] and not item.get("parcial")
+            ),
         }
 
     def run(self):
@@ -320,9 +401,10 @@ class TarefaMidia(ThreadSegura):
             elif len(self.urls) > 1 or self.operacao == "processamento":
                 dados = self._executar_lote(servico)
             elif self.operacao == "download":
+                destino_item = self._destino_para_url(servico, self.urls[0])
                 dados = servico.baixar_midia(
                     self.urls[0],
-                    self.destino,
+                    destino_item,
                     self.tipo,
                     self.progresso.emit,
                     self.resolucao_max,
@@ -338,13 +420,19 @@ class TarefaMidia(ThreadSegura):
                 if (
                     self.transcrever_apos_download
                     or self.gerar_conteudo_apos_transcricao
+                    or self.criar_srt
                 ):
                     self.progresso.emit(-1, "Download concluído; criando a transcrição…")
                     try:
                         dados["transcricao"] = servico.criar_transcricao(
                             self.urls[0],
-                            self.destino,
+                            destino_item,
                             self.progresso.emit,
+                            criar_srt=self.criar_srt,
+                            salvar_txt=(
+                                self.transcrever_apos_download
+                                or self.gerar_conteudo_apos_transcricao
+                            ),
                         )
                     except Exception as exc:
                         dados["transcricao_erro"] = str(exc)
@@ -363,10 +451,12 @@ class TarefaMidia(ThreadSegura):
                     except Exception as exc:
                         dados["conteudo_erro"] = str(exc)
             elif self.operacao == "transcricao":
+                destino_item = self._destino_para_url(servico, self.urls[0])
                 dados = servico.criar_transcricao(
                     self.urls[0],
-                    self.destino,
+                    destino_item,
                     self.progresso.emit,
+                    criar_srt=self.criar_srt,
                 )
                 if self.gerar_conteudo_apos_transcricao:
                     self.progresso.emit(-1, "Gerando conteúdo estruturado com Ollama…")
@@ -388,7 +478,7 @@ class TarefaMidia(ThreadSegura):
                 else:
                     transcricao = servico.criar_transcricao(
                         self.urls[0],
-                        self.destino,
+                        self._destino_para_url(servico, self.urls[0]),
                         self.progresso.emit,
                     )
                 dados = {"transcricao": transcricao}

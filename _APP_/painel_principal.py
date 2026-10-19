@@ -4,6 +4,10 @@ from _CONFIGURA_ import (
     ALTURA_BOTAO,
     ALTURA_BOTAO_PRINCIPAL,
     ALTURA_CARD_OPERACAO,
+    ALTURA_CAMPO_LINK_MAX,
+    ALTURA_CAMPO_LINK_MIN,
+    ALTURA_SPLITTER_CONFIGURACAO,
+    ALTURA_SPLITTER_RESULTADOS,
     ALTURA_PROGRESSO,
     ALTURA_TRANSCRICAO,
     ESPACAMENTO_LAYOUT,
@@ -18,6 +22,10 @@ from _CONFIGURA_ import (
     FORMATOS_VIDEO_DISPONIVEIS,
     FORMATO_AUDIO_PADRAO,
     FORMATO_VIDEO_PADRAO,
+    LARGURA_BOTAO_ANALISAR,
+    LARGURA_BOTAO_BUSCA,
+    LARGURA_BOTAO_PASTA,
+    LARGURA_CAMPO_DESTINO,
     MARGEM_LAYOUT,
     PASTA_DOWNLOADS_PADRAO,
     ROTULO_QUALIDADE_AUTOMATICA,
@@ -44,7 +52,7 @@ from _ULTILIDADES_.icones import (
     icone,
 )
 from _ULTILIDADES_.loading_overlay import LoadingOverlay
-from _ULTILIDADES_.popups import popup_aviso, popup_erro
+from _ULTILIDADES_.popups import popup_aviso, popup_erro, popup_info
 
 from pathlib import Path
 import json
@@ -64,6 +72,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QPlainTextEdit,
     QScrollArea,
+    QSplitter,
     QTabWidget,
     QTextEdit,
     QVBoxLayout,
@@ -81,6 +90,7 @@ class PainelPrincipal(QWidget):
         self._titulo_transcricao = ""
         self._dialog_busca = None
         self._overlay = None
+        self._popup_pendente = None
         self._montar_ui()
 
     @property
@@ -97,12 +107,16 @@ class PainelPrincipal(QWidget):
             MARGEM_LAYOUT,
         )
         layout.setSpacing(ESPACAMENTO_LAYOUT)
-        scroll = QScrollArea(self)
-        scroll.setWidgetResizable(True)
-        scroll.setWidget(conteudo_painel)
         layout_externo = QVBoxLayout(self)
         layout_externo.setContentsMargins(0, 0, 0, 0)
-        layout_externo.addWidget(scroll)
+        self._splitter = QSplitter(Qt.Orientation.Vertical, self)
+        self._splitter.setChildrenCollapsible(False)
+        layout_externo.addWidget(self._splitter, 1)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(conteudo_painel)
+        self._splitter.addWidget(scroll)
 
         titulo = QLabel("HenDowVideos")
         titulo.setStyleSheet(ESTILO_CABECALHO)
@@ -124,8 +138,8 @@ class PainelPrincipal(QWidget):
             "Cole um link ou vários links, um por linha. A análise detalhada "
             "é feita em um link por vez."
         )
-        self.campo_url.setMinimumHeight(82)
-        self.campo_url.setMaximumHeight(120)
+        self.campo_url.setMinimumHeight(ALTURA_CAMPO_LINK_MIN)
+        self.campo_url.setMaximumHeight(ALTURA_CAMPO_LINK_MAX)
         self.campo_url.setToolTip(
             "Links públicos de vídeo. Para processar vários, coloque um endereço "
             "em cada linha."
@@ -138,7 +152,7 @@ class PainelPrincipal(QWidget):
         self.botao_verificar.setIconSize(QSize(TAMANHO_ICONE_ACAO, TAMANHO_ICONE_ACAO))
         self.botao_verificar.setStyleSheet(ESTILO_BTN_CANCELAR)
         self.botao_verificar.setMinimumHeight(ALTURA_BOTAO_PRINCIPAL)
-        self.botao_verificar.setMinimumWidth(170)
+        self.botao_verificar.setFixedWidth(LARGURA_BOTAO_ANALISAR)
         self.botao_verificar.setToolTip(
             "Consulta título, canal, duração, formato e qualidades disponíveis. "
             "Use um link por vez."
@@ -159,7 +173,11 @@ class PainelPrincipal(QWidget):
             "Abre a busca do YouTube para localizar vídeos e adicionar os links aqui."
         )
         self.botao_busca.clicked.connect(self._abrir_busca)
-        fonte_layout.addWidget(self.botao_busca)
+        self.botao_busca.setMaximumWidth(LARGURA_BOTAO_BUSCA)
+        fonte_layout.addWidget(
+            self.botao_busca,
+            alignment=Qt.AlignmentFlag.AlignLeft,
+        )
 
         destino_layout = QHBoxLayout()
         destino_layout.setSpacing(ESPACAMENTO_LAYOUT)
@@ -173,13 +191,41 @@ class PainelPrincipal(QWidget):
         self.botao_pasta.setIconSize(QSize(TAMANHO_ICONE_ACAO, TAMANHO_ICONE_ACAO))
         self.botao_pasta.setStyleSheet(ESTILO_BTN_CANCELAR)
         self.botao_pasta.setMinimumHeight(ALTURA_BOTAO)
+        self.botao_pasta.setFixedWidth(LARGURA_BOTAO_PASTA)
         self.botao_pasta.setToolTip("Escolha a pasta onde os resultados serão salvos.")
         self.botao_pasta.clicked.connect(self._escolher_pasta)
+        self.campo_destino.setMaximumWidth(LARGURA_CAMPO_DESTINO)
         destino_layout.addWidget(self.campo_destino, 1)
         destino_layout.addWidget(self.botao_pasta)
         fonte_layout.addWidget(QLabel("Salvar os resultados em"))
         fonte_layout.addLayout(destino_layout)
-        layout.addWidget(grupo_fonte)
+        self.opcao_pasta_por_video = QCheckBox(
+            "Organizar os arquivos de cada vídeo em uma subpasta"
+        )
+        self.opcao_pasta_por_video.setChecked(True)
+        self.opcao_pasta_por_video.setToolTip(
+            "Cria uma subpasta com o título e o ID de cada vídeo. Desmarque para "
+            "salvar todos os arquivos diretamente na pasta escolhida."
+        )
+        fonte_layout.addWidget(self.opcao_pasta_por_video)
+        grupo_info = QGroupBox("Informações do link")
+        grupo_info.setStyleSheet(ESTILO_CARTAO)
+        info_layout = QVBoxLayout(grupo_info)
+        self.rotulo_info = QLabel(
+            "Cole um link e clique em “Analisar link” para consultar os detalhes."
+        )
+        self.rotulo_info.setWordWrap(True)
+        self.rotulo_info.setMinimumHeight(42)
+        self.rotulo_info.setToolTip(
+            "Título, canal, duração, formato de origem e qualidades detectadas."
+        )
+        info_layout.addWidget(self.rotulo_info)
+
+        linha_entrada = QHBoxLayout()
+        linha_entrada.setSpacing(ESPACAMENTO_LAYOUT)
+        linha_entrada.addWidget(grupo_fonte, 3)
+        linha_entrada.addWidget(grupo_info, 2)
+        layout.addLayout(linha_entrada)
 
         grupo_operacoes = QGroupBox("2. O que você quer fazer?")
         grupo_operacoes.setStyleSheet(ESTILO_CARTAO)
@@ -192,6 +238,8 @@ class PainelPrincipal(QWidget):
         grade_opcoes = QGridLayout()
         grade_opcoes.setHorizontalSpacing(ESPACAMENTO_LAYOUT)
         grade_opcoes.setVerticalSpacing(ESPACAMENTO_LAYOUT)
+        grade_opcoes.setColumnStretch(0, 1)
+        grade_opcoes.setColumnStretch(1, 1)
 
         self.card_video, self.opcao_video = self._criar_card_opcao(
             ico_video(),
@@ -220,20 +268,36 @@ class PainelPrincipal(QWidget):
             "Precisa do Ollama aberto e do modelo configurado instalado. Se "
             "necessário, a transcrição é criada automaticamente.",
         )
+        self.card_srt, self.opcao_srt = self._criar_card_opcao(
+            ico_transcricao(),
+            "Criar legenda SRT",
+            "Salvar legendas sincronizadas com horários em um arquivo .srt.",
+            "Usa os tempos das legendas existentes ou os trechos do Whisper. "
+            "Marque também “Criar transcrição” ou “Gerar conteúdo” para salvar "
+            "o arquivo .txt.",
+        )
         self._cards_opcao = (
             (self.card_video, self.opcao_video),
             (self.card_audio, self.opcao_audio),
             (self.card_transcricao, self.opcao_transcricao),
+            (self.card_srt, self.opcao_srt),
             (self.card_conteudo, self.opcao_conteudo),
         )
         grade_opcoes.addWidget(self.card_video, 0, 0)
         grade_opcoes.addWidget(self.card_audio, 0, 1)
         grade_opcoes.addWidget(self.card_transcricao, 1, 0)
-        grade_opcoes.addWidget(self.card_conteudo, 1, 1)
+        grade_opcoes.addWidget(self.card_srt, 1, 1)
+        grade_opcoes.addWidget(self.card_conteudo, 2, 0, 1, 2)
         operacoes_layout.addLayout(grade_opcoes)
 
-        self.painel_video = QGroupBox("Opções de vídeo")
+        self.painel_video = QGroupBox(
+            "Opções de vídeo — usadas quando “Baixar vídeo” estiver marcado"
+        )
         self.painel_video.setStyleSheet(ESTILO_CARTAO)
+        self.painel_video.setToolTip(
+            "Escolha resolução e formato antes ou depois de marcar “Baixar vídeo”. "
+            "Essas opções só são usadas quando essa tarefa está selecionada."
+        )
         painel_video_layout = QHBoxLayout(self.painel_video)
         painel_video_layout.addWidget(QLabel("Qualidade máxima"))
         self.seletor_qualidade = QComboBox()
@@ -251,7 +315,6 @@ class PainelPrincipal(QWidget):
             "converte o codec original."
         )
         painel_video_layout.addWidget(self.seletor_formato_video, 1)
-        operacoes_layout.addWidget(self.painel_video)
 
         self.painel_audio = QGroupBox("Opções de áudio")
         self.painel_audio.setStyleSheet(ESTILO_CARTAO)
@@ -264,11 +327,16 @@ class PainelPrincipal(QWidget):
             "Escolha o formato para salvar o áudio extraído."
         )
         audio_layout.addWidget(self.seletor_formato_audio, 1)
-        operacoes_layout.addWidget(self.painel_audio)
+        linha_formatos = QHBoxLayout()
+        linha_formatos.setSpacing(ESPACAMENTO_LAYOUT)
+        linha_formatos.addWidget(self.painel_video, 2)
+        linha_formatos.addWidget(self.painel_audio, 1)
+        operacoes_layout.addLayout(linha_formatos)
         for opcao in (
             self.opcao_video,
             self.opcao_audio,
             self.opcao_transcricao,
+            self.opcao_srt,
             self.opcao_conteudo,
         ):
             opcao.toggled.connect(self._atualizar_selecao)
@@ -287,30 +355,23 @@ class PainelPrincipal(QWidget):
         self._atualizar_selecao()
         layout.addWidget(grupo_operacoes)
 
-        grupo_info = QGroupBox("Informações do link")
-        grupo_info.setStyleSheet(ESTILO_CARTAO)
-        info_layout = QVBoxLayout(grupo_info)
-        self.rotulo_info = QLabel(
-            "Cole um link e clique em “Analisar link” para consultar os detalhes."
-        )
-        self.rotulo_info.setWordWrap(True)
-        self.rotulo_info.setMinimumHeight(42)
-        self.rotulo_info.setToolTip(
-            "Título, canal, duração, formato de origem e qualidades detectadas."
-        )
-        info_layout.addWidget(self.rotulo_info)
-        layout.addWidget(grupo_info)
-
         self.barra_progresso = QProgressBar()
         self.barra_progresso.setMinimumHeight(ALTURA_PROGRESSO)
         self.barra_progresso.setRange(0, 100)
         self.barra_progresso.setValue(0)
         self.barra_progresso.setStyleSheet(ESTILO_PROGRESSBAR)
-        layout.addWidget(self.barra_progresso)
+        self.barra_progresso.hide()
 
         self.rotulo_status = QLabel("Pronto.")
         self.rotulo_status.setStyleSheet(ESTILO_STATUS)
-        layout.addWidget(self.rotulo_status)
+        self.rotulo_status.setWordWrap(True)
+
+        rodape_layout = QVBoxLayout()
+        rodape_layout.setContentsMargins(0, 0, 0, 0)
+        rodape_layout.setSpacing(ESPACAMENTO_LAYOUT)
+        rodape_layout.addWidget(self.barra_progresso)
+        rodape_layout.addWidget(self.rotulo_status)
+        layout_externo.addLayout(rodape_layout)
 
         self.abas_resultado = QTabWidget()
         self.abas_resultado.setMinimumHeight(ALTURA_TRANSCRICAO + 40)
@@ -405,7 +466,13 @@ class PainelPrincipal(QWidget):
         )
         historico_layout.addWidget(self.lista_historico)
         self.abas_resultado.addTab(pagina_historico, "Histórico local")
-        layout.addWidget(self.abas_resultado, 1)
+        self._splitter.addWidget(self.abas_resultado)
+        self._splitter.setStretchFactor(0, 3)
+        self._splitter.setStretchFactor(1, 2)
+        self._splitter.setSizes([
+            ALTURA_SPLITTER_CONFIGURACAO,
+            ALTURA_SPLITTER_RESULTADOS,
+        ])
         self._atualizar_historico()
 
         log.ok("PainelPrincipal", "_montar_ui", "interface de mídia montada")
@@ -593,8 +660,15 @@ class PainelPrincipal(QWidget):
         baixar_video = self.opcao_video.isChecked()
         baixar_audio = self.opcao_audio.isChecked()
         transcrever = self.opcao_transcricao.isChecked()
+        criar_srt = self.opcao_srt.isChecked()
         gerar_conteudo = self.opcao_conteudo.isChecked()
-        if not any((baixar_video, baixar_audio, transcrever, gerar_conteudo)):
+        if not any((
+            baixar_video,
+            baixar_audio,
+            transcrever,
+            criar_srt,
+            gerar_conteudo,
+        )):
             popup_aviso(
                 "Escolha uma tarefa",
                 "Marque ao menos uma opção antes de iniciar o processamento.",
@@ -613,6 +687,7 @@ class PainelPrincipal(QWidget):
             "processamento",
             tipo="+".join(tipos_download) or "processamento",
             transcrever=transcrever,
+            criar_srt=criar_srt,
             gerar_conteudo=gerar_conteudo,
             baixar_video=baixar_video,
             baixar_audio=baixar_audio,
@@ -626,13 +701,12 @@ class PainelPrincipal(QWidget):
         ))
 
     def _atualizar_controles_formato(self, ocupado: bool | None = None):
-        video_selecionado = self.opcao_video.isChecked()
         audio_selecionado = self.opcao_audio.isChecked()
         livre = not self.tarefa_ativa if ocupado is None else not ocupado
-        self.painel_video.setVisible(video_selecionado)
+        self.painel_video.setVisible(True)
         self.painel_audio.setVisible(audio_selecionado)
-        self.seletor_qualidade.setEnabled(video_selecionado and livre)
-        self.seletor_formato_video.setEnabled(video_selecionado and livre)
+        self.seletor_qualidade.setEnabled(livre)
+        self.seletor_formato_video.setEnabled(livre)
         self.seletor_formato_audio.setEnabled(audio_selecionado and livre)
 
     def _atualizar_qualidades(self, alturas: list[int]):
@@ -649,6 +723,7 @@ class PainelPrincipal(QWidget):
         operacao: str,
         tipo: str = "video",
         transcrever: bool = False,
+        criar_srt: bool = False,
         gerar_conteudo: bool = False,
         baixar_video: bool = False,
         baixar_audio: bool = False,
@@ -685,7 +760,10 @@ class PainelPrincipal(QWidget):
             return
 
         self._definir_ocupado(True)
-        self.barra_progresso.setRange(0, 0)
+        self._popup_pendente = None
+        self.barra_progresso.setRange(0, 100)
+        self.barra_progresso.setValue(0)
+        self.barra_progresso.hide()
         mensagens = {
             "informacoes": "Consultando informações do link…",
             "download": "Iniciando download…",
@@ -706,7 +784,9 @@ class PainelPrincipal(QWidget):
             destino=destino,
             tipo=tipo,
             transcrever_apos_download=transcrever,
+            criar_srt=criar_srt,
             gerar_conteudo_apos_transcricao=gerar_conteudo,
+            organizar_por_video=self.opcao_pasta_por_video.isChecked(),
             baixar_video=baixar_video,
             baixar_audio=baixar_audio,
             resolucao_max=(
@@ -733,9 +813,11 @@ class PainelPrincipal(QWidget):
     def _definir_ocupado(self, ocupado: bool):
         self.campo_url.setEnabled(not ocupado)
         self.campo_destino.setEnabled(not ocupado)
+        self.opcao_pasta_por_video.setEnabled(not ocupado)
         self.opcao_video.setEnabled(not ocupado)
         self.opcao_audio.setEnabled(not ocupado)
         self.opcao_transcricao.setEnabled(not ocupado)
+        self.opcao_srt.setEnabled(not ocupado)
         self.opcao_conteudo.setEnabled(not ocupado)
         self._atualizar_controles_formato(ocupado)
         self.botao_pasta.setEnabled(not ocupado)
@@ -749,6 +831,7 @@ class PainelPrincipal(QWidget):
                     self.opcao_video,
                     self.opcao_audio,
                     self.opcao_transcricao,
+                    self.opcao_srt,
                     self.opcao_conteudo,
                 )
             )
@@ -768,13 +851,12 @@ class PainelPrincipal(QWidget):
         self.rotulo_status.setText(mensagem)
         if self._overlay is not None:
             self._overlay.set_mensagem(mensagem)
-        if percentual < 0:
-            self.barra_progresso.setRange(0, 0)
-            return
-        self.barra_progresso.setRange(0, 100)
-        self.barra_progresso.setValue(max(0, min(100, percentual)))
+            self._overlay.set_progresso(percentual)
 
     def _ao_receber_resultado(self, resultado: object):
+        self.barra_progresso.setRange(0, 100)
+        self.barra_progresso.setValue(100)
+        self.barra_progresso.show()
         if not isinstance(resultado, dict):
             self.rotulo_status.setText("A operação terminou com uma resposta inválida.")
             return
@@ -785,9 +867,11 @@ class PainelPrincipal(QWidget):
             self.rotulo_status.setText(f"Não foi possível concluir: {erro}")
             if operacao == "informacoes":
                 self.rotulo_info.setText(f"Não foi possível verificar o link.\n{erro}")
-            self.barra_progresso.setRange(0, 100)
-            self.barra_progresso.setValue(0)
-            popup_erro("Não foi possível concluir", erro, self)
+            self._popup_pendente = (
+                "erro",
+                "Não foi possível concluir",
+                erro,
+            )
             return
 
         dados = resultado.get("dados") or {}
@@ -805,40 +889,54 @@ class PainelPrincipal(QWidget):
             )
             self.rotulo_status.setText("Informações carregadas.")
         elif "items" in dados:
-            itens = dados.get("items") or []
-            sucessos = int(dados.get("success_count") or 0)
-            falhas = int(dados.get("failure_count") or 0)
+            itens = [
+                item for item in (dados.get("items") or [])
+                if isinstance(item, dict)
+            ]
+            sucessos = sum(1 for item in itens if item.get("ok"))
+            parciais = sum(1 for item in itens if item.get("parcial"))
+            falhas = max(0, len(itens) - sucessos - parciais)
             linhas = []
             transcricoes = []
             conteudos = []
             for item in itens:
                 endereco = str(item.get("url") or "")
-                if item.get("ok"):
-                    linhas.append(f"Concluído: {endereco}")
-                else:
-                    detalhe_erro = "; ".join(
-                        str(erro) for erro in (item.get("erros") or [])
-                    )
-                    if item.get("transcricao_erro"):
-                        detalhe_erro = "; ".join(
-                            parte for parte in (
-                                detalhe_erro,
-                                f"Transcrição: {item['transcricao_erro']}",
-                            ) if parte
-                        )
-                    if item.get("conteudo_erro"):
-                        detalhe_erro = "; ".join(
-                            parte for parte in (
-                                detalhe_erro,
-                                f"Conteúdo: {item['conteudo_erro']}",
-                            ) if parte
-                        )
-                    linhas.append(
-                        f"Falhou: {endereco} — "
-                        f"{detalhe_erro or item.get('erro', 'erro desconhecido')}"
-                    )
+                estado = (
+                    "Concluído"
+                    if item.get("ok")
+                    else "Parcial"
+                    if item.get("parcial")
+                    else "Falhou"
+                )
+                detalhes_erro = [
+                    str(erro) for erro in (item.get("erros") or []) if erro
+                ]
+                origem_transcricao = ""
+                for chave, rotulo in (
+                    ("erro", "Erro"),
+                    ("transcricao_erro", "Transcrição"),
+                    ("conteudo_erro", "Conteúdo"),
+                    ("historico_erro", "Histórico"),
+                ):
+                    if item.get(chave):
+                        detalhes_erro.append(f"{rotulo}: {item[chave]}")
+
+                caminhos = []
+                for download in item.get("downloads") or []:
+                    if isinstance(download, dict) and download.get("folder"):
+                        caminhos.append(str(download["folder"]))
+                dados_item = item.get("dados")
+                if isinstance(dados_item, dict) and dados_item.get("folder"):
+                    caminhos.append(str(dados_item["folder"]))
                 transcricao = item.get("transcricao")
                 if transcricao:
+                    if transcricao.get("path"):
+                        caminhos.append(str(transcricao["path"]))
+                    if transcricao.get("srt_path"):
+                        caminhos.append(f"SRT: {transcricao['srt_path']}")
+                    origem_transcricao = str(
+                        transcricao.get("source") or "transcrição"
+                    )
                     texto = str(transcricao.get("text") or "").strip()
                     if texto:
                         transcricoes.append(f"Link: {endereco}\n\n{texto}")
@@ -848,18 +946,17 @@ class PainelPrincipal(QWidget):
                         "url": endereco,
                         "conteudo": conteudo,
                     })
-                if item.get("transcricao_erro"):
-                    linhas.append(
-                        f"Transcrição não concluída: {item['transcricao_erro']}"
+                partes_linha = [f"{estado}: {endereco}"]
+                if origem_transcricao:
+                    partes_linha.append(
+                        f"Transcrição criada com {origem_transcricao}"
                     )
-                if item.get("conteudo_erro"):
-                    linhas.append(
-                        f"Conteúdo estruturado não gerado: {item['conteudo_erro']}"
-                    )
-                if item.get("historico_erro"):
-                    linhas.append(
-                        f"Histórico não salvo: {item['historico_erro']}"
-                    )
+                caminhos = list(dict.fromkeys(caminhos))
+                if caminhos:
+                    partes_linha.append("Saída: " + " | ".join(caminhos))
+                if detalhes_erro:
+                    partes_linha.append("; ".join(detalhes_erro))
+                linhas.append(" — ".join(partes_linha))
             if transcricoes:
                 self.campo_transcricao.setPlainText("\n\n---\n\n".join(transcricoes))
                 self._caminho_transcricao = ""
@@ -877,24 +974,32 @@ class PainelPrincipal(QWidget):
                     self._titulo_transcricao = ""
             if conteudos:
                 self._mostrar_conteudo(conteudos[0]["conteudo"] if len(conteudos) == 1 else conteudos)
-            self.rotulo_status.setText(
-                (
-                    f"Processamento concluído: {sucessos} sucesso(s), "
-                    f"{falhas} falha(s). "
-                    if len(itens) == 1
-                    else f"Lote concluído: {sucessos} sucesso(s), {falhas} falha(s). "
-                )
-                + " ".join(linhas)
+            if transcricoes:
+                self._mostrar_aba_resultado(0)
+            titulo_status = (
+                "Processamento finalizado"
+                if len(itens) == 1
+                else "Lote finalizado"
             )
-            if falhas and not sucessos:
-                popup_erro(
-                    "Nenhum link foi concluído",
-                    "Confira os detalhes no status da tela:\n\n"
-                    + "\n".join(linhas),
-                    self,
-                )
-            self.barra_progresso.setRange(0, 100)
-            self.barra_progresso.setValue(100)
+            self.rotulo_status.setText(
+                f"{titulo_status}: {sucessos} completo(s), "
+                f"{parciais} parcial(is), {falhas} sem resultado."
+            )
+            resumo = (
+                f"Links processados: {len(itens)}\n"
+                f"Concluídos por completo: {sucessos}\n"
+                f"Concluídos parcialmente: {parciais}\n"
+                f"Sem resultado: {falhas}\n"
+                f"Pasta-base: {self.campo_destino.text().strip() or 'não definida'}"
+            )
+            if linhas:
+                resumo += "\n\nDetalhes:\n" + "\n".join(linhas)
+            if falhas and not (sucessos or parciais):
+                self._popup_pendente = ("erro", "Nenhum resultado concluído", resumo)
+            elif parciais or falhas:
+                self._popup_pendente = ("aviso", "Processamento parcial", resumo)
+            else:
+                self._popup_pendente = ("info", "Processamento concluído", resumo)
             self._atualizar_historico()
         elif operacao == "download":
             mensagem = str(dados.get("message") or "Download concluído.")
@@ -906,10 +1011,14 @@ class PainelPrincipal(QWidget):
                 self._caminho_transcricao = str(transcricao.get("path") or "")
                 self._url_transcricao = self._ler_urls()[0]
                 self._titulo_transcricao = str(transcricao.get("title") or "")
+                self._mostrar_aba_resultado(0)
                 mensagem += (
-                    f" Transcrição criada por {transcricao.get('source', 'legenda')} "
-                    f"e salva em {self._caminho_transcricao}."
+                    f" Transcrição obtida por {transcricao.get('source', 'legenda')}."
                 )
+                if self._caminho_transcricao:
+                    mensagem += f" Texto salvo em {self._caminho_transcricao}."
+                if transcricao.get("srt_path"):
+                    mensagem += f" Legenda SRT salva em {transcricao['srt_path']}."
             elif erro_transcricao:
                 mensagem += f" A transcrição não foi concluída: {erro_transcricao}"
             if dados.get("conteudo"):
@@ -935,13 +1044,15 @@ class PainelPrincipal(QWidget):
             self._caminho_transcricao = str(dados.get("path") or "")
             self._url_transcricao = self._ler_urls()[0]
             self._titulo_transcricao = str(dados.get("title") or "")
+            self._mostrar_aba_resultado(0)
             if dados.get("conteudo"):
                 self._mostrar_conteudo(dados["conteudo"])
             origem = str(dados.get("source") or "transcrição")
-            mensagem = (
-                f"Transcrição gerada a partir de {origem} e salva em "
-                f"{self._caminho_transcricao}"
-            )
+            mensagem = f"Transcrição gerada a partir de {origem}."
+            if self._caminho_transcricao:
+                mensagem += f" Arquivo .txt: {self._caminho_transcricao}."
+            if dados.get("srt_path"):
+                mensagem += f" Legenda .srt: {dados['srt_path']}."
             if dados.get("conteudo_erro"):
                 mensagem += (
                     ". Conteúdo estruturado não gerado: "
@@ -991,7 +1102,17 @@ class PainelPrincipal(QWidget):
         self.botao_salvar_conteudo.setEnabled(
             bool(self.campo_conteudo.toPlainText().strip())
         )
-        self.abas_resultado.setCurrentIndex(1)
+        self._mostrar_aba_resultado(1)
+
+    def _mostrar_aba_resultado(self, indice: int):
+        self.abas_resultado.setCurrentIndex(indice)
+        tamanhos = self._splitter.sizes()
+        total = sum(tamanhos)
+        if total:
+            altura_resultados = round(total * 0.44)
+            self._splitter.setSizes(
+                [total - altura_resultados, altura_resultados]
+            )
 
     def _ao_terminar_thread(self):
         thread = self.sender()
@@ -1003,6 +1124,16 @@ class PainelPrincipal(QWidget):
             self._worker = None
             self._definir_ocupado(False)
             thread.deleteLater()
+            popup_pendente = self._popup_pendente
+            self._popup_pendente = None
+            if popup_pendente:
+                tipo, titulo, mensagem = popup_pendente
+                if tipo == "erro":
+                    popup_erro(titulo, mensagem, self)
+                elif tipo == "aviso":
+                    popup_aviso(titulo, mensagem, self)
+                else:
+                    popup_info(titulo, mensagem, self)
 
     def _salvar_transcricao(self):
         texto = self.campo_transcricao.toPlainText().strip()

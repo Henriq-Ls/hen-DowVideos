@@ -1,0 +1,234 @@
+════════════════════════════════════════════════════════════════════════════════
+REGISTRO DO PROJETO — hen-DowVideos
+Atualizado em 19/10/2026
+════════════════════════════════════════════════════════════════════════════════
+
+OBJETIVO
+--------
+hen-DowVideos é um programa desktop em PySide6/Qt para pesquisar ou receber links
+de mídia, baixar vídeo/áudio em lote, gerar transcrições e criar conteúdo
+estruturado com base nelas. O histórico fica em SQLite local na pasta de dados
+do usuário.
+
+Não criar interface em Tkinter, site ou aplicativo web. Os arquivos Tkinter
+enviados servem apenas como referência de fluxo e comportamento.
+
+FLUXO IMPLEMENTADO
+-------------------
+1. Colar um ou vários links, ou pesquisar vídeos do YouTube por tema/palavra-chave.
+2. Na busca, filtrar quantidade, visualizações, duração e idade da publicação;
+   adicionar os resultados selecionados à lista de links.
+3. Consultar informações e qualidades disponíveis de um link por vez.
+4. Escolher a pasta de destino, tipo e formato de saída.
+5. Baixar vídeo ou áudio em lote, com qualidade opcional e progresso.
+6. Opcionalmente gerar transcrição .txt ou legenda sincronizada .srt junto do
+   download ou como tarefa separada. Primeiro tenta legendas temporizadas; sem
+   elas, usa Whisper.
+7. Opcionalmente gerar conteúdo estruturado depois da transcrição, ou pedir isso
+   diretamente. O resultado aparece como JSON e pode ser salvo em arquivo.
+8. Registrar links processados, arquivos, transcrições e conteúdo no histórico
+   SQLite local. A busca indica links que já estão no histórico.
+
+Formatos predefinidos: vídeo MP4, MKV, MOV, AVI, FLV, WMV e WEBM; áudio MP3,
+M4A, WAV, FLAC e OPUS. Links de Shorts e outros sites são processados pelo
+yt-dlp quando o extrator suporta e o conteúdo está acessível.
+
+O mecanismo de download é yt-dlp e atende sites que ele reconhece. Não é possível
+garantir download de literalmente todo site; alguns links podem não ser
+compatíveis, exigir autenticação ou estar protegidos. O aplicativo não deve
+contornar DRM nem encerrar o navegador para copiar cookies.
+
+FFMPEG NA MÁQUINA DO USUÁRIO
+----------------------------
+Os pacotes de FFmpeg são pesados — o usuário informou que juntos passam de 2 GB
+— e ficarão na máquina dele. Não baixar, instalar, copiar para o projeto ou
+incluir esses binários no repositório.
+
+O código procura ffmpeg.exe (ou ffmpeg em outros sistemas), preferencialmente em:
+  FFMPEG/FFmpeg/bin/
+Também aceita:
+  FFMPEG/bin/
+  FFMPEG/
+
+O caminho local é passado ao yt-dlp e adicionado ao PATH do processo para o
+Whisper. A pasta FFMPEG/ está excluída do Git. Os executáveis reais não estão
+visíveis neste ambiente; o uso deles ainda precisa ser validado no Windows do
+usuário.
+
+ARQUITETURA ATUAL
+-----------------
+_CONFIGURA_/
+  Centraliza o título, a versão, estilos, dimensões, formatos, busca, idioma,
+  modelos locais e caminhos.
+
+_APP_/
+  MainWindow, painel Qt para links/formato/transcrição/conteúdo e janela de busca
+  por tema ou palavra-chave.
+
+_MIDIA_/
+  yt-dlp para pesquisa, metadados e downloads; leitura de legendas; transcrição
+  Whisper; geração de conteúdo estruturado usando Ollama local; histórico SQLite.
+
+_THREADS_/
+  TarefaMidia herda ThreadSegura e envia progresso e resultado por sinais Qt,
+  evitando bloquear a interface.
+
+_APPDATA_/
+  Mantém caminhos locais do aplicativo e cache do modelo Whisper.
+
+nucleo/
+  Guarda documentação .txt; não colocar arquivos Python aqui.
+
+REFERÊNCIAS ANALISADAS
+----------------------
+BAIXAR_YOUTUBE/
+  Video_ou_Audio.py mostra escolhas de download de vídeo/áudio com yt-dlp e
+  FFmpeg. Baixar_Apenas_Leg_1.py mostra busca de legendas com fallback para
+  Whisper. Há também scripts de busca por tema/palavras-chave e automação de
+  conteúdo/blog, que ainda não fazem parte do fluxo inicial da interface.
+
+Baixa video/
+  APP_tkinter.py e APP_TINKER_NOVO.py serviram como referência para o formulário,
+  escolha da pasta, consulta de informações, botões e progresso. A interface
+  final será refeita em PySide6, não copiada em Tkinter.
+
+Escopo confirmado pelo usuário:
+  Todos os módulos de BAIXAR_YOUTUBE e Baixa video devem ser incorporados ao
+  hen-DowVideos. Busca, histórico local e geração estruturada fazem parte do
+  escopo. O usuário não quer publicação no Blogger nem ferramentas de organização,
+  limpeza ou renomeação de arquivos. Adaptar as funções úteis à interface Qt;
+  não criar uma interface Tkinter ou um site.
+
+Os diretórios de referência foram mantidos intactos. Não copiaram-se rotinas que
+fecham o Edge para acessar cookies, nem a chave de API embutida em Function.py.
+Essa chave deve ser revogada pelo usuário; o valor não é registrado aqui.
+
+SEGURANÇA E LIMITES
+-------------------
+O app não deve usar cookies do navegador nem contornar DRM. Alguns sites, como
+Instagram, podem exigir autenticação ou bloquear o yt-dlp; suporte não é garantido
+para qualquer endereço da internet. Não reutilizar a chave de API exposta em
+Function.py; o conteúdo estruturado usa Ollama local sem credencial.
+
+ALTERAÇÕES RECENTES IMPLEMENTADAS
+---------------------------------
+Interface e fluxo:
+  - Reorganização do painel para separar a entrada dos links, a pasta de destino,
+    as tarefas combináveis, as opções de mídia, as informações do link e os
+    resultados.
+  - A entrada do link e as informações do vídeo ficam em duas colunas. O campo
+    de pasta e os botões têm largura limitada; as opções ficam em uma área
+    superior rolável, separada das abas de resultado por um divisor vertical que
+    pode ser arrastado para aumentar a transcrição, o conteúdo ou o histórico.
+   - As operações de baixar vídeo, baixar áudio, criar transcrição, criar legenda
+     SRT e gerar conteúdo estruturado podem ser combinadas na mesma execução por
+     caixas de seleção.
+  - Botões principais maiores, com ícones e textos de ação; controles e tarefas
+    têm textos de apoio e dicas ao passar o mouse.
+  - A análise do link apresenta título e metadados disponíveis antes do
+    processamento, para orientar a escolha de qualidade e formato.
+  - As opções de resolução e formato de vídeo permanecem visíveis mesmo antes de
+    marcar “Baixar vídeo”; elas só são aplicadas quando essa tarefa está marcada.
+
+Progresso e resultado:
+  - A barra de progresso da tela não fica mais em modo indeterminado depois que
+    uma operação termina. Durante o trabalho, o overlay mostra percentual quando
+    há progresso numérico; nas etapas sem percentual, mostra o indicador de
+    atividade e a etapa atual.
+  - Ao concluir, o overlay fecha e a barra da tela fica completa. Os pop-ups de
+    resultado são apresentados depois de fechar o overlay.
+  - O resumo diferencia tarefas concluídas, parciais e sem resultado. Se o vídeo
+    baixar, mas a transcrição falhar, o download é informado como concluído e a
+    transcrição como falha parcial, em vez de declarar que nenhum link foi
+    concluído.
+  - Quando uma transcrição é gerada, a interface abre automaticamente a aba
+    “Transcrição”, rola até os resultados e informa se a origem foi legenda ou
+    Whisper.
+
+Arquivos por vídeo e transcrição:
+  - Foi adicionada a opção “Organizar os arquivos de cada vídeo em uma
+    subpasta”, marcada por padrão. Cada link usa uma subpasta com título e ID
+    seguros; vídeo, áudio e arquivos de transcrição/conteúdo daquele link usam
+    o mesmo destino. Desmarcada, a opção salva os arquivos diretamente na pasta
+    selecionada.
+  - A transcrição continua tentando usar legendas disponíveis primeiro. Se não
+    houver legendas, verifica se o pacote Python openai-whisper está instalado
+    antes de baixar áudio temporário e apresenta uma mensagem explícita quando
+    a dependência estiver ausente.
+  - Um HTTP 429 ao buscar legendas não impede a transcrição: o app segue para o
+    Whisper quando disponível. O arquivo de sessão analisado confirmou que esse
+    fallback gerou e salvou a transcrição.
+  - O README foi atualizado para descrever o fluxo e a organização opcional dos
+    arquivos por vídeo.
+
+Exceção nativa do Windows:
+  - Foi removido o tratamento global que tentava ignorar a exceção
+    0x8001010d. Um filtro genérico desse tipo podia mascarar uma falha real e não
+    comprova que o problema foi corrigido.
+  - A ordem de fechamento do overlay e exibição dos pop-ups foi ajustada. A
+    exceção nativa ainda precisa ser verificada executando o programa no Windows;
+    ela não foi reproduzida nem confirmada como resolvida neste ambiente.
+
+CONFIGURAÇÃO DO OLLAMA E LEGENDA SRT
+------------------------------------
+- Foi adicionado um botão de engrenagem “Configurações” no canto superior direito
+  da barra de menus e uma ação equivalente no menu “Arquivo”.
+- A janela de configurações permite definir o nome/tag do modelo instalado e o
+  endereço do endpoint de geração do Ollama. O padrão é `llama3.2` e
+  `http://127.0.0.1:11434/api/generate`.
+- As preferências ficam salvas no `config.json` local do AppData e são lidas na
+  próxima geração de conteúdo estruturado. O app não baixa o modelo por essa
+  janela; ele precisa estar instalado no Ollama, por exemplo com
+  `ollama pull llama3.2`. A pasta dos pesos continua sendo administrada pelo
+  Ollama; o campo de endereço indica o serviço/API chamado pelo app.
+- Na lista de tarefas foi adicionada a opção “Criar legenda SRT”. O arquivo
+  `titulo-id-legenda.srt` usa os horários de legendas VTT/SRT existentes ou, se
+  não houver legendas temporizadas, os segmentos com início e fim retornados
+  pelo Whisper.
+- O SRT é formado por trechos temporizados, não por uma linha fixa a cada minuto.
+  Se apenas SRT for marcado, o app salva o `.srt`; marcar também “Criar
+  transcrição” ou “Gerar conteúdo” salva o `.txt` junto. O caminho do SRT aparece
+  no resumo do processamento e é registrado no histórico.
+- A geração de conteúdo usa o modelo e o endereço configurados; a transcrição e
+  a criação de SRT usam legendas/Whisper, não o Llama.
+
+MODELOS LOCAIS DISCUTIDOS
+-------------------------
+- O código usa `llama3.2` por padrão; essa tag do Ollama corresponde à variante
+  pequena de 3B. Ela foi recomendada como opção de partida para a máquina
+  informada: Intel i5-8300H, 8 GB de RAM e GTX 1050 com 4 GB de VRAM.
+- A janela de modelos do Ollama mostrada pelo usuário listava `gemma4`,
+  `qwen3.6` e `phi3:mini`. Foi explicado que são famílias diferentes, não
+  variantes de Llama; os modelos grandes padrão de Gemma 4 e Qwen 3.6 excedem ou
+  ficam muito apertados para essa máquina. `phi3:mini` tinha 3,8B parâmetros e
+  ocupava 2,2 GB.
+- Em uma saída do terminal, `ollama ps` estava vazio (nenhum modelo carregado
+  naquele instante) e `ollama ls` mostrava `phi3:mini`. Depois, o usuário informou
+  que apagou o Phi-3 Mini e começou a baixar `llama3.2`. A instalação final do
+  Llama ainda precisa ser confirmada com `ollama ls` no Windows.
+
+DEPENDÊNCIAS E VERIFICAÇÃO
+--------------------------
+hen-DowVideos/requirements.txt lista PySide6, qtawesome, yt-dlp e openai-whisper.
+O Ollama é instalado separadamente e o modelo padrão é llama3.2. FFmpeg também é
+local; nenhum dos dois é pacote Python do requirements.
+
+Verificações feitas:
+  - Sintaxe compilada dos módulos alterados e verificação de whitespace do diff.
+  - Testes locais sem rede para histórico SQLite, filtros de busca, resposta JSON
+    simulada do Ollama e escolha de formato de áudio.
+  - Testes simulados da classificação de resultado parcial (por exemplo, vídeo
+    baixado e transcrição com falha), do destino compartilhado por link e da
+    criação de subpasta segura para um vídeo.
+  - Verificação da mensagem de dependência ausente do Whisper antes do download
+    do áudio temporário.
+  - Testes sem rede do parser de legendas com timestamps, formatação SRT,
+    geração SRT somente e geração com o fallback do Whisper.
+  - Verificação de leitura das preferências persistidas do modelo e do endpoint
+    Ollama, análise de sintaxe dos 22 arquivos Python e `git diff --check`.
+  - A janela Qt, os downloads reais, o Ollama e os binários FFmpeg não foram
+    executados neste ambiente; PySide6, qtawesome, yt-dlp e Whisper não estão
+    instalados aqui. Portanto, a interface e a exceção 0x8001010d ainda precisam
+    de validação no computador Windows do usuário.
+
+════════════════════════════════════════════════════════════════════════════════
