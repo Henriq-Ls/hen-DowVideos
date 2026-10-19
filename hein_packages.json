@@ -1,0 +1,54 @@
+{
+  "packaging": {
+    "versao": "26.3",
+    "instalado_em": "2026-10-19T10:14:16"
+  },
+  "setuptools": {
+    "versao": "84.0.0",
+    "instalado_em": "2026-10-19T10:14:16"
+  },
+  "wheel": {
+    "versao": "0.48.0",
+    "instalado_em": "2026-10-19T10:14:16"
+  },
+  "pip": {
+    "versao": "26.2.1",
+    "instalado_em": "2026-10-19T10:15:05"
+  },
+  "PySide6": {
+    "versao": "6.12.0",
+    "instalado_em": "2026-10-19T10:17:43"
+  },
+  "PySide6_Addons": {
+    "versao": "6.12.0",
+    "instalado_em": "2026-10-19T10:17:43"
+  },
+  "PySide6_Essentials": {
+    "versao": "6.12.0",
+    "instalado_em": "2026-10-19T10:17:43"
+  },
+  "PySide6_Pdf": {
+    "versao": "6.12.0.140",
+    "instalado_em": "2026-10-19T10:17:43"
+  },
+  "PySide6_WebEngine": {
+    "versao": "6.12.0.140",
+    "instalado_em": "2026-10-19T10:17:43"
+  },
+  "shiboken6": {
+    "versao": "6.12.0",
+    "instalado_em": "2026-10-19T10:17:43"
+  },
+  "qtawesome": {
+    "versao": "1.4.2",
+    "instalado_em": "2026-10-19T10:27:11"
+  },
+  "qtpy": {
+    "versao": "2.4.3",
+    "instalado_em": "2026-10-19T10:27:11"
+  },
+  "yt-dlp": {
+    "versao": "2026.8.19",
+    "instalado_em": "2026-10-19T10:27:56"
+  }
+}

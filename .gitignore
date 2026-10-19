@@ -1,5 +1,6 @@
-.venv/
 __pycache__/
-*.pyc
-.env
+*.py[cod]
+.pytest_cache/
+LOG_GERAL.log
+FFMPEG/
 .hein/

@@ -1,12 +1,64 @@
-hein-
+hen-DowVideos — INSTALAR
+Atualizado em 19/10/2026
+
+# STATUS DO PROJETO
+# O requirements.txt contém PySide6, qtawesome, yt-dlp e openai-whisper.
+# A instalação e os binários locais não foram verificados nesta máquina.
+# A geração de conteúdo estruturado usa Ollama local, sem chave de API.
 
 # ------------------------- OBRIGATÓRIO --------------------------------
+# Windows, Python 3.13.1 64 bits. Execute no PowerShell, dentro de hen-DowVideos.
 py -3.13.1 -m venv .venv
-python -m venv .venv
+# Se o comando acima não existir, use: python -m venv .venv
 
 Set-ExecutionPolicy RemoteSigned -Scope CurrentUser
 .\.venv\Scripts\Activate.ps1
 
-python.exe -m pip install --upgrade pip    
-python -m pip install --upgrade setuptools wheel    
-pip install -r requirements.txt
+python -m pip install --upgrade pip
+python -m pip install --upgrade setuptools wheel
+
+# ------------------------- QT E DOWNLOAD -------------------------------
+pip install PySide6
+pip install qtawesome
+pip install yt-dlp
+
+# ------------------------- TRANSCRIÇÃO ----------------------------------
+pip install openai-whisper
+# O PyTorch é dependência do Whisper e é instalado junto.
+# O modelo Whisper é baixado para o cache na primeira transcrição.
+
+# ------------------------- CONTEÚDO ESTRUTURADO -------------------------
+# Instale e abra o Ollama para Windows.
+# No PowerShell, baixe o modelo local usado por padrão:
+ollama pull llama3.2
+# A geração usa o serviço local do Ollama em http://127.0.0.1:11434.
+# Para trocar o modelo/API local, configure antes de iniciar:
+# $env:HEN_DOWVIDEOS_MODELO_OLLAMA="nome-do-modelo"
+# $env:HEN_DOWVIDEOS_OLLAMA_API_URL="http://127.0.0.1:11434/api/generate"
+
+# ------------------------- ATUALIZAÇÕES / OPCIONAL ----------------------
+# Atualizar yt-dlp se um site parar de funcionar:
+pip install --upgrade yt-dlp
+
+# Atualizações de conexão, se forem necessárias:
+pip install --upgrade certifi
+pip install --upgrade urllib3
+
+# Só para criar um executável de distribuição:
+pip install pyinstaller
+
+# ------------------------- INSTALAÇÃO LOCAL ------------------------------
+# FFmpeg: não é pacote pip. A pasta unificada fica na máquina do usuário em
+# hen-DowVideos/FFMPEG/FFmpeg/bin/. Também são aceitos os caminhos antigos
+# hen-DowVideos/FFMPEG/bin/ e hen-DowVideos/FFMPEG/.
+# O programa Ollama é instalado separadamente; a aplicação conversa com
+# o serviço local dele e não precisa do pacote Python "ollama".
+# Não é necessário instalar bibliotecas de publicação no Blogger.
+
+# ------------------------- CONFERIR O INSTALADO --------------------------
+# Execute dentro do mesmo .venv, na máquina local:
+python -m pip list
+python -m pip show PySide6 qtawesome yt-dlp openai-whisper
+
+# Para iniciar:
+python main.py

@@ -1,0 +1,103 @@
+════════════════════════════════════════════════════════════════════════════════
+  DOCUMENTAÇÃO DO PROJETO
+════════════════════════════════════════════════════════════════════════════════
+
+hen-DowVideos é um aplicativo desktop em PySide6 para consultar links de mídia,
+baixar vídeo ou áudio em lote e gerar/salvar transcrições. A transcrição é
+opcional no download ou pode ser iniciada separadamente. O usuário também pode
+gerar conteúdo editorial estruturado a partir da transcrição com o Ollama local
+e salvar o resultado como JSON.
+
+────────────────────────────────────────────────────────────────────────────────
+MÓDULOS E RESPONSABILIDADES
+────────────────────────────────────────────────────────────────────────────────
+
+_CONFIGURA_/
+  Fonte única de verdade para hardcodes. Cores, atalhos, dimensões, strings
+  de UI. Nenhum outro arquivo pode ter valores fixos.
+
+_LOGS_/
+  Logger singleton. Gera LOG_GERAL.log a cada sessão.
+  Captura crashes Python (sys.excepthook) e nativos C/Qt (faulthandler).
+
+_APPDATA_/
+  Gerencia a pasta do usuário no sistema (%APPDATA% / ~/).
+  Caminhos canônicos, config.json, sessao.json.
+
+_THREADS_/
+  Base class ThreadSegura e gerenciador central ThreadManager.
+  Todas as threads do projeto herdam ThreadSegura. TarefaMidia executa operações
+  de busca, metadados, download, transcrição e conteúdo local sem bloquear a
+  interface.
+
+_APP_/
+  Janela principal, busca de vídeos e painel de download, transcrição, conteúdo
+  estruturado e histórico.
+
+_MIDIA_/
+  Serviço de metadados e download com yt-dlp, leitura de legendas VTT/SRT e
+  transcrição de áudio com Whisper quando não há legenda. Também gera conteúdo
+  estruturado por meio do serviço local do Ollama e pesquisa vídeos do YouTube.
+
+_MIDIA_/historico.py
+  Histórico local SQLite de links processados, formatos, transcrições e conteúdo
+  estruturado, salvo na pasta de dados do usuário.
+
+_ULTILIDADES_/
+  Ícones, popups e ferramentas reutilizáveis.
+
+nucleo/
+  Apenas documentação .txt. NUNCA coloque .py aqui.
+
+────────────────────────────────────────────────────────────────────────────────
+DECISÕES DE ARQUITETURA
+────────────────────────────────────────────────────────────────────────────────
+
+  - A lógica útil dos exemplos Tkinter foi transferida para o serviço de mídia;
+    a interface é reconstruída em PySide6, sem importar janelas Tkinter.
+  - Operações de rede, transcrição e geração local rodam em TarefaMidia, que
+    herda ThreadSegura.
+    A interface recebe progresso e resultados por sinais Qt.
+  - Os links são processados pelo yt-dlp: vídeos comuns, Shorts e outros sites
+    reconhecidos pelo yt-dlp podem ser usados quando estão acessíveis.
+  - A pesquisa por tema/palavra-chave busca vídeos do YouTube e permite filtrar
+    quantidade, visualizações, duração e idade da publicação.
+  - O tipo de saída, formato e qualidade são escolhidos na interface. Vídeo:
+    MP4, MKV, MOV, AVI, FLV, WMV ou WEBM. Áudio: MP3, M4A, WAV, FLAC ou OPUS.
+  - A transcrição prioriza legendas existentes e usa Whisper como alternativa.
+    O modelo Whisper fica no cache gerenciado por AppData.
+  - Conteúdo estruturado é gerado localmente com Ollama; o JSON contém título
+    SEO, título principal, descrição, introdução, contexto, detalhes, resumo,
+    pontos principais, FAQ, título da seção de vídeo, texto ALT e palavras-chave.
+  - Os pacotes pesados de FFmpeg ficam na máquina do usuário; não são baixados,
+    instalados nem incluídos no repositório pelo projeto. A pasta unificada fica
+    em FFMPEG/FFmpeg/bin/ na raiz do projeto; o aplicativo também aceita os
+    caminhos antigos FFMPEG/bin/ e FFMPEG/. A pasta FFMPEG/ está ignorada pelo
+    Git. O caminho localizado é passado ao yt-dlp e adicionado ao PATH do
+    processo para o Whisper.
+  - A transcrição usa openai-whisper pelo Python. O modelo configurado é
+    baixado automaticamente para o cache gerenciado por AppData na primeira
+    utilização; não precisa ficar dentro da pasta de executáveis do FFmpeg.
+  - O aplicativo não importa cookies do navegador nem encerra processos do
+    navegador. Links devem ser acessíveis e o uso deve respeitar direitos e
+    regras da plataforma de origem.
+  - O histórico local ajuda a identificar links já processados. Ele guarda
+    downloads, transcrições e conteúdo gerado no AppData do usuário.
+  - Não há publicação no Blogger nem ferramentas de organização/renomeação
+    de arquivos.
+  - O app não usa cookies do navegador nem contorna DRM. Algumas plataformas,
+    inclusive Instagram, podem exigir login ou negar o acesso ao yt-dlp.
+
+────────────────────────────────────────────────────────────────────────────────
+DEPENDÊNCIAS EXTERNAS
+────────────────────────────────────────────────────────────────────────────────
+
+  PySide6       — framework Qt para Python
+  qtawesome     — ícones FontAwesome/MaterialDesign para Qt (opcional)
+  yt-dlp        — consulta de informações e download de mídia/legendas
+  openai-whisper — transcrição local quando não houver legenda
+  Ollama         — programa local necessário para gerar conteúdo estruturado
+  FFmpeg        — executável local ffmpeg.exe (ou ffmpeg), preferencialmente em
+                  FFMPEG/FFmpeg/bin/ na raiz do projeto; não é dependência Python
+
+════════════════════════════════════════════════════════════════════════════════

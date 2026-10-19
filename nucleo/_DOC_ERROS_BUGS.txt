@@ -1,0 +1,17 @@
+════════════════════════════════════════════════════════════════════════════════
+  REGISTRO DE ERROS E BUGS
+════════════════════════════════════════════════════════════════════════════════
+
+Formato:
+  [ID] STATUS: ABERTO / INVESTIGANDO / RESOLVIDO / DESCARTADO
+  Data descoberta:
+  Descrição:
+  Como reproduzir:
+  Causa suspeita:
+  Solução / workaround:
+
+────────────────────────────────────────────────────────────────────────────────
+
+[Registre aqui qualquer bug encontrado durante o desenvolvimento]
+
+════════════════════════════════════════════════════════════════════════════════
